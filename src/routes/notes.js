@@ -7,28 +7,28 @@ const router = express.Router()
 
 const notes = []
 
-// router.get('/:userId', (request, response) => {
-//   // entrada de dados
-//   const { userId } = request.params 
+router.get('/:userId', (request, response) => {
+  // entrada de dados
+  const { userId } = request.params 
 
-//   // processamento
-//   const user = users.find(user => user.id === userId)
+  // processamento
+  const user = users.find(user => user.id === userId)
 
-//   if (!user) {
-//     // saída
-//     return response.status(404).json({
-//       message: 'Usuário não encontrado.'
-//     })
-//   }
+  if (!user) {
+    // saída
+    return response.status(404).json({
+      message: 'Usuário não encontrado.'
+    })
+  }
 
-//   const userNotes = notes.filter(note => note.userId === userId)
+  const userNotes = notes.filter(note => note.userId === userId)
 
-//   // saída
-//   return response.status(200).json({
-//     message: `Notas de ${user.name} filtradas com sucesso.`,
-//     notes: userNotes
-//   })
-// })
+  // saída
+  return response.status(200).json({
+    message: `Notas de ${user.name} filtradas com sucesso.`,
+    notes: userNotes
+  })
+})
 
 router.get('/:userId', (request, response) => {
   const { userId } = request.params
