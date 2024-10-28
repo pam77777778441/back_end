@@ -1,238 +1,122 @@
-const express = require('express')
-const cors = require('cors')
-const bcrypt = require('bcryptjs')
+import express from 'express';
+import cors from 'cors';
+import bcrypt from 'bcryptjs';
 
+const app = express();
+const PORT = 6000;
+let users = [];
+let messages = [];
+let nextUser = 1;
+let nextMessage = 1;
 
-const app = express()
-const PORT = 6000
-let newUser 
-let users = []
-let messages = []
-let nextUser = 1
-let nextMessage = 1
+app.use(cors());
+app.use(express.json());
 
-app.use(cors())
-app.use(express.json())
+// ENDPOINT VERIFICACAO 
+app.get('/', (req, res) => {
+    res.send('Bem vindo à aplicação');
+});
 
-//ENDPOINT VERIFICACAO 
+// ENDPOINT SIGNUP 
+app.post('/signup', async (req, res) => {
+    const { name, email, password } = req.body;
 
-app.get('/', (req, res) =>{
-    res.send('Bem vindo à aplicação')
-})
-
-//ENDPOINT SIGNUP 
-
-app.post('/signup', async (req, res) =>{
-
-    const name = req.body.name
-    const email = req.body.email
-    const password = req.body.password
-
-    // Validação 
-    if(!name){
-       return res.status(400).send(JSON.stringify({ Mensagem: "Por favor, verifique se passou o nome" }))
+    if (!name || !email || !password) {
+        return res.status(400).json({ Mensagem: "Todos os campos são obrigatórios" });
     }
 
-    // Validação email 
-    if(!email){
-        return res.status(400).send(JSON.stringify({ Mensagem: "Por favor, verifique se passou o email" }))
+    if (users.find(user => user.email === email)) {
+        return res.status(400).json({ Mensagem: "Email já cadastrado, insira outro." });
     }
 
-    // Verifica se o email esta cadastrado 
-    let findEmail = users.find(user => user.email === email)
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = { id: nextUser++, name, email, password: hashedPassword };
+    users.push(newUser);
+    res.status(201).json({ Mensagem: `Seja bem-vinde ${newUser.name}!` });
+});
 
-
-    if(findEmail){
-       return res.status(400).send(JSON.stringify({ Mensagem: "Email já cadastrado, insira outro ." }))
+// ENDPOINT LOGIN
+app.post('/login', async (req, res) => {
+    const { email, password } = req.body;
+    const user = users.find(u => u.email === email);
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+        return res.status(401).json({ message: 'Credenciais inválidas' });
     }
+    return res.status(200).json({ userId: user.id });
+});
 
-    // Validação 
-    if(!password){
-        return res.status(400).send(JSON.stringify({ Mensagem: "Senha da pessoa usuária inválida.Favor inserir dado" }))
-    }
+// ENDPOINT LISTAGEM COM PAGINAÇÃO
+app.get('/notes/:userId', (req, res) => {
+    const userId = parseInt(req.params.userId);
+    const page = parseInt(req.query.page) || 1;
+    const perPage = parseInt(req.query.perPage) || 3;
 
-    
-    if(name && email && password ){
-        // Utiliza o bcrypt para criptografar a senha 
-        let hashedPassword = await bcrypt.hash(password,10)
+    const userMessages = messages.filter(message => message.userId === userId);
+    const startIndex = (page - 1) * perPage;
+    const endIndex = startIndex + perPage;
 
-        //Cria uma novo usuário
-        let newUser = {
-            id: nextUser,
-            name:name,
-            email:email,
-            password:hashedPassword
-        }
-
-        // adiciona uma nova pessoa 
-        users.push(newUser)
-
-        nextUser++
-
-        res.status(201).send(JSON.stringify({ Mensagem: `Seja bem vinde ${newUser.name} ! Pessoa usuária registrada com sucesso!` }))
-    }
-
-})
-
-//ENDPOINT LOGIN 
-
-app.post('/login', async (req,res)=>{
-    const email = req.body.email
-    const password = req.body.password
-    //Verifica se o email foi passado
-    if(!email){
-        return res.status(400).send(JSON.stringify({ Mensagem: "Insira um e-mail válido" }))
-    }
-
-    // Busca o email no banco de dados
-    let findEmail = users.find(user => user.email === email)
-
-    //VALIDAÇÃO
-    if(!findEmail){
-      return res.status(400).send(JSON.stringify({ Mensagem: "Email não encontrado em nossa base de dados." }))
-    }
-    // Verifica  senha
-    if(!password){
-        return res.status(400).send(JSON.stringify({ Mensagem: "Insira uma senha válida" }))
-    }
-    // Se econtra o email registrado, compara com o bcrypt a senha
-    if(findEmail){
-        let passwordMatched = await bcrypt.compare(password, findEmail.password)
-
-        if(passwordMatched){
-           return res.status(200).send(JSON.stringify({ Mensagem: `Seja bem vinde ${findEmail.name} ! Pessoa usuária logada com sucesso!` }))
-        }else{
-            return res.status(400).send(JSON.stringify({ Mensagem: `Credenciais não válidas. Verifique os dados` }))
-
-        }
-    }
-})
+    const paginatedMessages = userMessages.slice(startIndex, endIndex);
+    res.status(200).json({
+        page,
+        perPage,
+        totalMessages: userMessages.length,
+        totalPages: Math.ceil(userMessages.length / perPage),
+        messages: paginatedMessages
+    });
+});
 
 // CRIAR MENSAGENS 
+app.post('/message/:email', (req, res) => {
+    const { title, description } = req.body;
+    const email = req.params.email;
 
-app.post('/message/:email',(req,res)=>{
-    const title = req.body.title
-    const description = req.body.description
-    const email = req.params.email
-    //Verifica se passou o email
-    if(!email){
-       return res.status(400).send(JSON.stringify({ Mensagem: "Por favor, verifique se passou um email válido" }))
+    const user = users.find(u => u.email === email);
+    if (!user || !title || !description) {
+        return res.status(400).json({ Mensagem: "Dados inválidos" });
     }
-    //Busca o email
-    let findEmail = users.find(user => user.email === email)
-    //Casso o email não exista no banco de dados, fornece uma mensagem
-    if(!findEmail){
-        return res.status(400).send(JSON.stringify({ Mensagem: "Email não encontrado em nossa base de dados." }))
+
+    const newMessage = { id: nextMessage++, title, description, userId: user.id };
+    messages.push(newMessage);
+    res.status(201).json({ Mensagem: "Mensagem criada com sucesso!" });
+});
+
+// LER MENSAGENS
+app.get('/message/:email', (req, res) => {
+    const email = req.params.email;
+    const user = users.find(u => u.email === email);
+    if (!user || messages.length === 0) {
+        return res.status(400).json({ Mensagem: "Erro ao buscar mensagens" });
     }
-    //Verifica se a pessoa passou o titulo da mensagem
-    if(!title){
-        return res.status(400).send(JSON.stringify({ Mensagem: "Por favor, verifique se passou um titulo válido" }))
-    }
-    //Verifica se passou a descricao da mensagem
-    if(!description){
-        return res.status(400).send(JSON.stringify({ Mensagem: "Por favor, verifique se passou uma descrição válida" }))
-    }
+
+    const userMessages = messages
+        .filter(msg => msg.userId === user.id)
+        .map(msg => `ID: ${msg.id} - Título: ${msg.title} - Descrição: ${msg.description}`);
     
-    if(title && description){
-        let newMessage = {
-            id: nextMessage,
-            title: title,
-            description: description
-        }
-
-        messages.push(newMessage)
-
-        nextMessage ++ 
-
-       return res.status(201).send(JSON.stringify({ Mensagem: "Mensagem criada com sucesso!" }))
-    }
-})
-
-
-//LER MENSAGENS 
-
-app.get('/message/:email',(req,res)=>{
-    const email = req.params.email
-    //Verifica se passou o email
-    if(!email){
-        return res.status(400).send(JSON.stringify({ Mensagem: "Por favor, verifique se passou um email válido" }))
-    }
-    //Busca esse email 
-    let findEmail = users.find(user => user.email === email)
-
-  // VERIFICACAO DE EMAIL
-    if(!findEmail){
-       return res.status(400).send(JSON.stringify({ Mensagem: "Email não encontrado, verifique ou crie uma conta" }))
-    }
-    
-    if(messages.length ===0){
-       return res.status(400).send(JSON.stringify({ Mensagem: "Não há mensagem registradas. Por gentileza, registre uma mensagem." }))
-    }
-    
-    const listOfMessage = messages.map(message =>{
-        const data = ` ID: ${message.id} - Título: ${message.title} - Desrição: ${message.description}`
-        return data
-    })
-    
-    return res.status(200).send(JSON.stringify({ Mensagem: `Seja bem-vinde! As mensagens cadastradas são : ${listOfMessage}` }))
-})
+    res.status(200).json({ Mensagem: `Mensagens: ${userMessages.join(", ")}` });
+});
 
 // ATUALIZAR MENSAGENS
-
-app.put('/message/:id',(req,res)=>{
-
-    const id = Number(req.params.id)
-    const title = req.body.title
-    const description = req.body.description
-    //Verifica se o id foi passado
-    if(!id){
-       return res.status(400).send(JSON.stringify({ Mensagem: "Por favor, informe um id válido da mensagem"}))
+app.put('/message/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const { title, description } = req.body;
+    const message = messages.find(msg => msg.id === id);
+    if (!message || !title || !description) {
+        return res.status(400).json({ Mensagem: "Dados inválidos" });
     }
-    //Busca a mensagem com aquele id 
-    const findMessageIdIndex = messages.findIndex(message => message.id === id)
-    //Findindex, se não encontra retorna -1
-    if(findMessageIdIndex === -1) {
-       return res.status(400).send(JSON.stringify({ Mensagem: `Mensagem cujo o id é : ${id}, não foi localizado no nosso banco de dados`}))
-    }
-    //Verifica se passou o titulo da mensagem
-    if(!title){
-        return res.status(400).send(JSON.stringify({ Mensagem: 'Por favor, verifique se passou um titulo válido'}))
-    }
-    //Verificacao
-    if(!description){
-        return res.status(400).send(JSON.stringify({ Mensagem: 'Por favor, verifique se passou uma descrição válida'}))
-    }
-    // atualizar as informações ao encontrar mensagem
-    if(findMessageIdIndex !== -1){
-        const message = messages[findMessageIdIndex]
-        message.title = title,
-        message.description = description 
-        res.status(200).send(JSON.stringify({ Mensagem: ` Mensagem atualizada com sucesso ! Título:  ${message.title} , Descrição: ${message.description}`}))
-    }
+    message.title = title;
+    message.description = description;
+    res.status(200).json({ Mensagem: "Mensagem atualizada com sucesso!" });
+});
 
-})
-
-// DELETAR MENSAGENS 
-
-app.delete('/message/:id',(req,res)=>{
-    const id = Number(req.params.id)
-    //Verifica se passou o id 
-    if(!id){
-        return res.status(400).send(JSON.stringify({ Mensagem: `Por favor, informe um id válido da mensagem`}))
+// DELETAR MENSAGENS
+app.delete('/message/:id', (req, res) => {
+    const id = Number(req.params.id);
+    const index = messages.findIndex(msg => msg.id === id);
+    if (index === -1) {
+        return res.status(400).json({ Mensagem: "Mensagem não encontrada" });
     }
-    //Busca a mensagem p
-    const findMessageIdIndex = messages.findIndex(message => message.id === id)
-    
-    if(findMessageIdIndex === -1) {
-        return res.status(400).send(JSON.stringify({ Mensagem: `Mensagem cujo o id é : ${id}, não foi localizado no nosso banco de dados`}))
-    }
-    
-    if(findMessageIdIndex !== -1){
-        messages.splice(findMessageIdIndex,1)
-        return res.status(200).send(JSON.stringify({ Mensagem: `Mensagem apagada com sucesso`}))
-    }
+    messages.splice(index, 1);
+    res.status(200).json({ Mensagem: "Mensagem apagada com sucesso" });
+});
 
-})
-
-
-app.listen(PORT,()=>  console.log('Servidor rodando na porta 6000'))
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
